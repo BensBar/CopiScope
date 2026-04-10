@@ -1,14 +1,18 @@
 import { useRef } from 'react'
 import { useAppStore } from './store/useAppStore'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Header } from './components/layout/Header'
 import { TabNav } from './components/layout/TabNav'
 import { FilterBar } from './components/filters/FilterBar'
-import { EmptyState } from './components/shared/EmptyState'
+import { DataSourcePicker } from './components/ingest/DataSourcePicker'
 import { ExportModal } from './components/export/ExportModal'
 import { OverviewTab } from './tabs/OverviewTab'
 import { CostTab } from './tabs/CostTab'
 import { AdoptionTab } from './tabs/AdoptionTab'
 import { AnomaliesTab } from './tabs/AnomaliesTab'
+import { InsightsTab } from './tabs/InsightsTab'
+import { ActionCenterTab } from './tabs/ActionCenterTab'
+import { SeatsTab } from './tabs/SeatsTab'
 
 function WarningBanner() {
   const warnings = useAppStore((s) => s.parseWarnings)
@@ -45,47 +49,54 @@ export default function App() {
   const records = useAppStore((s) => s.records)
   const loadFile = useAppStore((s) => s.loadFile)
   const activeTab = useAppStore((s) => s.activeTab)
+  const dataSource = useAppStore((s) => s.dataSource)
+  const apiData = useAppStore((s) => s.apiData)
 
-  const hasData = records.length > 0
+  const hasData = records.length > 0 || (dataSource === 'api' && apiData !== null)
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col transition-colors duration-200">
-      <Header />
-      {hasData && (
-        <>
-          <TabNav />
-          <FilterBar />
-        </>
-      )}
-      <WarningBanner />
-
-      <main className="flex-1">
-        {!hasData ? (
-          <EmptyState onUpload={() => fileInputRef.current?.click()} />
-        ) : (
+    <ErrorBoundary>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col transition-colors duration-200">
+        <Header />
+        {hasData && (
           <>
-            {activeTab === 'overview' && <OverviewTab />}
-            {activeTab === 'cost' && <CostTab />}
-            {activeTab === 'adoption' && <AdoptionTab />}
-            {activeTab === 'anomalies' && <AnomaliesTab />}
+            <TabNav />
+            <FilterBar />
           </>
         )}
-      </main>
+        <WarningBanner />
 
-      <ExportModal />
+        <main className="flex-1">
+          {!hasData ? (
+            <DataSourcePicker />
+          ) : (
+            <>
+              {activeTab === 'overview' && <OverviewTab />}
+              {activeTab === 'cost' && <CostTab />}
+              {activeTab === 'adoption' && <AdoptionTab />}
+              {activeTab === 'anomalies' && <AnomaliesTab />}
+              {activeTab === 'insights' && <InsightsTab />}
+              {activeTab === 'action-center' && <ActionCenterTab />}
+              {activeTab === 'seats' && <SeatsTab />}
+            </>
+          )}
+        </main>
 
-      {/* Hidden file input for EmptyState trigger */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".ndjson,.jsonl,.csv"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) loadFile(file)
-          e.target.value = ''
-        }}
-      />
-    </div>
+        <ExportModal />
+
+        {/* Hidden file input for EmptyState trigger */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".ndjson,.jsonl,.csv"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) loadFile(file)
+            e.target.value = ''
+          }}
+        />
+      </div>
+    </ErrorBoundary>
   )
 }
