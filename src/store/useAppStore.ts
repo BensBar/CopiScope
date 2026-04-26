@@ -3,10 +3,20 @@ import { persist } from 'zustand/middleware'
 import type { CopilotRecord } from '../types/metrics'
 import type { FilterState } from '../types/filters'
 import type { CostConfig } from '../types/cost'
+import type { CopilotMetricsResponse, CopilotSeatsResponse } from '../types/api'
+import type { ProcessedData, ComparisonData } from '../types/usage'
 import { loadFile } from '../lib/fileLoader'
 import { generateSampleNDJSON } from '../lib/sampleData'
+import { fetchCopilotData, getCopilotMetrics, getCopilotSeats } from '../lib/ingest/apiLoader'
 
-export type TabId = 'overview' | 'cost' | 'adoption' | 'anomalies'
+export type TabId = 'overview' | 'cost' | 'adoption' | 'anomalies' | 'insights' | 'action-center' | 'seats'
+
+export type DataSource = 'file' | 'api' | 'sample' | null
+
+interface ApiData {
+  metrics: CopilotMetricsResponse[] | null
+  seats: CopilotSeatsResponse | null
+}
 
 interface AppState {
   records: CopilotRecord[]
@@ -21,16 +31,24 @@ interface AppState {
 
   filters: FilterState
   costConfig: CostConfig
+
+  dataSource: DataSource
+  apiData: ApiData | null
+  processedUsageData: ProcessedData | null
+  comparisonData: ComparisonData | null
 }
 
 interface AppActions {
   loadFile: (file: File) => Promise<void>
   loadSampleData: () => Promise<void>
+  loadApiData: () => Promise<void>
   clearData: () => void
   setActiveTab: (tab: TabId) => void
   setFilters: (patch: Partial<FilterState>) => void
   resetFilters: () => void
   setCostConfig: (patch: Partial<CostConfig>) => void
+  setProcessedUsageData: (data: ProcessedData | null) => void
+  setComparisonData: (data: ComparisonData | null) => void
   openExportModal: () => void
   closeExportModal: () => void
   toggleDarkMode: () => void
@@ -75,6 +93,11 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   filters: DEFAULT_FILTERS,
   costConfig: DEFAULT_COST_CONFIG,
 
+  dataSource: null,
+  apiData: null,
+  processedUsageData: null,
+  comparisonData: null,
+
   loadFile: async (file: File) => {
     set({ isLoading: true, parseError: null, parseWarnings: [] })
     try {
@@ -86,6 +109,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         parseError: null,
         isLoading: false,
         filters: DEFAULT_FILTERS,
+        dataSource: 'file',
       })
     } catch (err) {
       set({
@@ -98,11 +122,41 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   loadSampleData: async () => {
     const ndjson = generateSampleNDJSON()
     const file = new File([ndjson], 'sample-copilot-data.ndjson', { type: 'application/x-ndjson' })
+    set({ dataSource: 'sample' })
     await get().loadFile(file)
+    set({ dataSource: 'sample' })
+  },
+
+  loadApiData: async () => {
+    set({ isLoading: true, parseError: null })
+    try {
+      const [metrics, seats] = await Promise.all([getCopilotMetrics(), getCopilotSeats()])
+      set({
+        apiData: { metrics, seats },
+        dataSource: 'api',
+        isLoading: false,
+      })
+    } catch (err) {
+      set({
+        parseError: err instanceof Error ? err.message : 'Failed to load API data',
+        isLoading: false,
+      })
+      throw err
+    }
   },
 
   clearData: () => {
-    set({ records: [], loadedFileName: null, parseWarnings: [], parseError: null, filters: DEFAULT_FILTERS })
+    set({
+      records: [],
+      loadedFileName: null,
+      parseWarnings: [],
+      parseError: null,
+      filters: DEFAULT_FILTERS,
+      dataSource: null,
+      apiData: null,
+      processedUsageData: null,
+      comparisonData: null,
+    })
   },
 
   setActiveTab: (tab) => set({ activeTab: tab }),
@@ -116,6 +170,9 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     set((s) => ({ costConfig: { ...s.costConfig, ...patch } }))
     useCostStore.getState().setCostConfig(patch)
   },
+
+  setProcessedUsageData: (data) => set({ processedUsageData: data }),
+  setComparisonData: (data) => set({ comparisonData: data }),
 
   openExportModal: () => set({ isExportModalOpen: true }),
   closeExportModal: () => set({ isExportModalOpen: false }),
